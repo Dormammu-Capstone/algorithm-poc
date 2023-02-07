@@ -1,8 +1,6 @@
 import heapq
 from enum import Enum, IntEnum
 
-# todo: create class to edge/node and robot operation queue
-
 cached = False
 nodes = None
 edges = None
@@ -13,18 +11,31 @@ class Direction(IntEnum):
     E = 2
     S = 3
     W = 4
+
+
+class Node:
+    def __init__(self, x, y, dir):
+        self.x = x
+        self.y = y
+        self.dir = dir
 # todo: fix duplicates
 # currently, generate all path include duplicates
+# no backwards edge
 
+# todo: create class to edge/node and
 # src-dest-dist-startori-destori
-# ewns 4 directions required
 
 # todo: get graph from database as argument
 
 
 def generateGraph():
+    length = 5
+    nodes = [(i, j) for j in range(length) for i in range(length)]
+    edges = {}
+    orientedNodes = []
+
     # working: 4 directions
-    def addEdge(edges, primitiveSrc, primitiveDest, direction):
+    def addEdge(primitiveSrc, primitiveDest, direction):
         orientedNode = (*primitiveSrc, direction)
         if orientedNode not in edges:
             edges[orientedNode] = []
@@ -32,32 +43,19 @@ def generateGraph():
         edges[orientedNode].append(
             ((*primitiveDest, direction), 1000))
 
-    length = 5
-    nodes = [(i, j) for j in range(length) for i in range(length)]
-    edges = {}
-    orientedNodes = []
-
     for node in nodes:
-        # changed direction v,h to nsew
-        # this mean that robot can face north in 0,0
-        # this is different from v,h system
-        # that there is no 0,0 cell facing north
-        #  ||
-        # -00-
-        # -00-
-        #  ||
         # todo: after get map from database, check this cell is good to go
         if (node[0]-1, node[1]) in nodes:
-            addEdge(edges, node, (node[0]-1, node[1]), Direction.W)
+            addEdge(node, (node[0]-1, node[1]), Direction.W)
             orientedNodes.append((*node, Direction.W))
         if (node[0]+1, node[1]) in nodes:
-            addEdge(edges, node, (node[0]+1, node[1]), Direction.E)
+            addEdge(node, (node[0]+1, node[1]), Direction.E)
             orientedNodes.append((*node, Direction.E))
         if (node[0], node[1]-1) in nodes:
-            addEdge(edges, node, (node[0], node[1]-1), Direction.N)
+            addEdge(node, (node[0], node[1]-1), Direction.N)
             orientedNodes.append((*node, Direction.N))
         if (node[0], node[1]+1) in nodes:
-            addEdge(edges, node, (node[0], node[1]+1), Direction.S)
+            addEdge(node, (node[0], node[1]+1), Direction.S)
             orientedNodes.append((*node, Direction.S))
 
         # assume all cells are intersection to 4 direction
@@ -101,10 +99,6 @@ def generateGraph():
                 edges[nnode].append((enode, 1000))
             if wnode in orientedNodes:
                 edges[nnode].append((wnode, 1000))
-
-        # if ew and ns:
-        #     edges[hnode].append((vnode, 1000))
-        #     edges[vnode].append((hnode, 1000))
 
     return orientedNodes, edges
 

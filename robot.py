@@ -2,7 +2,8 @@ from enum import Enum
 
 import PySide6
 from PySide6.QtCore import (QAbstractAnimation, QEasingCurve, QObject, QPoint,
-                            Qt, QVariantAnimation, Signal, Slot)
+                            QPointF, Qt, QTimer, QVariantAnimation, Signal,
+                            Slot)
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QTransform
 from PySide6.QtWidgets import (QGraphicsLineItem, QGraphicsPixmapItem,
                                QGraphicsRectItem, QGraphicsScene,
@@ -14,7 +15,19 @@ ROBOT_EMPTY = "robot_empty.png"
 ROBOT_MINERAL = "robot_mineral.png"
 ROBOT_GAS = "robot_gas.png"
 
+# instruction
 ROBOT_OPERATION = Enum("ROBOT_OPERATION", "WAIT MOVE ROTATE DUMP")
+ROBOT_MISSION = Enum("ROBOT_MISSION", "CARRYING RETURNING")
+# qenum
+
+
+# collision evasion
+# if two robots are facing each
+# lower priority go around
+# if two robots will not face (ㄱ)
+# lower priority wait
+# if two robots will face
+# lower priority go around
 
 
 class Robot(QGraphicsPixmapItem):
@@ -23,30 +36,38 @@ class Robot(QGraphicsPixmapItem):
         self.setPos(position[0], position[1])
         self.setTransformOriginPoint(size/2, size/2)
         self.setRotation((position[2]+1)*90)
+
         self.lastPosition = position
-        # currentdestination
+        # todo: currentdestination/nextposition/currentposition
+        # this program set the operations -move rotate- first
+        # when assign the task
+        # change :
+        # just generate next operation every time
+        # every call on doNextOperation
 
         self.signalObj = SignalInterface()
         self.robotNum = robotNum
 
         self.sequence = 0
         self.queue = []
-        # sequence for collision mitigation to insert wait
-        self.box = False
+        self.box = None
+        self.mission = ROBOT_MISSION.RETURNING
 
-    # todo: dump when robot has box
-    # todo: give box information to robot
+    def getPosition(self):
+        pass
+
     def assignOperation(self, route, box):
         self.sequence = 0
         self.queue = []
 
-        if box:
+        if box != None:
             self.setPixmap(QPixmap(ROBOT_GAS).scaled(100, 100))
-        else:
-            self.setPixmap(QPixmap(ROBOT_EMPTY).scaled(100, 100))
-        self.box = box
+            self.box = box
+        # else:
+        #     self.setPixmap(QPixmap(ROBOT_EMPTY).scaled(100, 100))
 
-        # todo: optimize routing
+        # o in route : (x,y,direction)
+        # maybe this is useless...
         for o in route:
             if self.lastPosition[2] == o[2]:
                 self.queue.append(
@@ -60,7 +81,6 @@ class Robot(QGraphicsPixmapItem):
                 else:
                     self.queue.append((ROBOT_OPERATION.ROTATE, 90))
                     self.queue.append((ROBOT_OPERATION.ROTATE, 90))
-
             self.lastPosition = o
 
         self.doNextOperation()
@@ -68,49 +88,68 @@ class Robot(QGraphicsPixmapItem):
     # todo: get weight from another source
     @Slot()
     def doNextOperation(self):
-        if len(self.queue) == self.sequence:
-            self.setPixmap(QPixmap(ROBOT_EMPTY).scaled(100, 100))
-            self.signalObj.operationFinished.emit(self.robotNum)
+        if self.sequence == len(self.queue):
+            if self.box:
+                self.dumpOperation(750)
+            else:
+                self.signalObj.operationFinished.emit(
+                    self.robotNum, self.pos())
             return
 
         currentStep = self.queue[self.sequence]
         if currentStep[0] == ROBOT_OPERATION.MOVE:
-            self.moveAnimation(self.signalObj, currentStep[1], 750)
+            self.moveAnimation(currentStep[1], 750)
         elif currentStep[0] == ROBOT_OPERATION.ROTATE:
-            self.rotateAnimation(self.signalObj, currentStep[1], 750)
+            self.rotateAnimation(currentStep[1], 750)
 
         self.sequence += 1
 
-    def rotateAnimation(self, parent, degree, duration):
-        anim = QVariantAnimation(parent)
+    def rotateAnimation(self, degree, duration):
+        anim = QVariantAnimation(self.signalObj)
         currRot = int(self.rotation())
         anim.setStartValue(currRot)
         anim.setEndValue(currRot+degree)
         anim.setDuration(duration)
         anim.setEasingCurve(QEasingCurve.InOutQuad)
+        # anim.valueChanged.connect(self.rotateOperationSlot)
         anim.valueChanged.connect(self.setRotation)
         anim.finished.connect(self.doNextOperation)
         anim.start(QAbstractAnimation.DeleteWhenStopped)
 
-    def moveAnimation(self, parent, destination, duration):
-        anim = QVariantAnimation(parent)
+    def moveAnimation(self, destination, duration):
+        anim = QVariantAnimation(self.signalObj)
         anim.setStartValue(QPoint(int(self.pos().x()), int(self.pos().y())))
         anim.setEndValue(destination)
         anim.setDuration(duration)
         anim.setEasingCurve(QEasingCurve.InOutQuad)
+        # anim.valueChanged.connect(self.moveFinished)
         anim.valueChanged.connect(self.setPos)
         anim.finished.connect(self.doNextOperation)
+        # anim.finished.connect(self.doNextOperation)
         anim.start(QAbstractAnimation.DeleteWhenStopped)
 
-    def dump(self):
-        pass
+    @Slot(QPointF)
+    def moveFinished(self, point: QPointF):
+        self.setPos(point)
+        self.lastPosition = (point.x(), point.y(), self.lastPosition[2])
 
-    def wait(self):
-        pass
+    @Slot(int)
+    def rotateOperationSlot(self, angle):
+        self.setRotation(angle)
+        if angle-self.lastPosition[2] == 1:
+            pass
+
+    def dumpOperation(self, duration):
+        self.setPixmap(QPixmap(ROBOT_EMPTY).scaled(100, 100))
+        self.box = None
+        self.waitOperation(duration)
+
+    def waitOperation(self, duration):
+        QTimer.singleShot(duration, self.doNextOperation)
 
 
 class SignalInterface(QObject):
-    operationFinished = Signal(int)
+    operationFinished = Signal(int, QPointF)
 
     def __init__(self) -> None:
         super().__init__()
