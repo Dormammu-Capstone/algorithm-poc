@@ -1,16 +1,10 @@
-from dataclasses import dataclass
 from random import randrange
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QGraphicsRectItem
 
-from pathfinding import Direction, dijkstra, findRoute, getGraph
+from pathfinding import Direction, Position, dijkstra, findRoute, getGraph
 from robot import Robot
-
-
-@dataclass
-class Cargo:
-    destination: tuple[int, int]
 
 
 class Cell(QGraphicsRectItem):
@@ -18,44 +12,54 @@ class Cell(QGraphicsRectItem):
         super().__init__(x, y, w, h)
         self.setBrush(color)
 
-    def assign(self, robot):
-        print("runtime fatal: ", robot, " stopped on empty cell.")
+    def assign(self, robot: Robot):
+        print("runtime fatal: ", robot.robotNum,
+              " calling assign on empty cell.")
 
 
 class StationCell(Cell):
     color = Qt.blue
 
-    def __init__(self, x, y, w, h):
+    def __init__(self, x, y, w, h, chutesPos: list[Position]):
         super().__init__(x, y, w, h, self.color)
         self.setPos(x, y)
+        self.chutesPos = chutesPos
 
-    def nextCargo(self) -> tuple[int, int]:
-        # todo get cargo data from external source
-        cargos = [(4, 4), (2, 2)]
-        next = randrange(0, 2)
-        return cargos[next]
+    def nextCargo(self) -> Position:
+        next = randrange(0, len(self.chutesPos))
+        return self.chutesPos[next]
 
     def assign(self, robot: Robot):
-        # pos = tuple(int(ti/100) for ti in robot.pos().toTuple())
-        pos = robot.lastPosition
+        pos = robot.currRobotPos().toGrid()
 
         nodes, edges = getGraph()
         distances, prevs = dijkstra(nodes, edges, pos)
-        # get chute direction from external source
         route = findRoute(
-            prevs, pos, (*self.nextCargo(), Direction.E))
+            prevs, pos, self.nextCargo().toTuple())
 
-        robot.assignOperation(route, 8)
+        print(robot.robotNum, ttor(route))
+
+        robot.assignMission(ttor(route), 8)
 
 
 class StationQueueCell(Cell):
     color = Qt.darkBlue
 
-    def __init__(self, x, y, w, h):
+    def __init__(self, x, y, w, h, nextQueue: Position):
         super().__init__(x, y, w, h, self.color)
+        self.nextQueue: Position = nextQueue
 
-    def assign(self, robot, nextQueue):
-        pass
+    def assign(self, robot):
+        pos = robot.currRobotPos().toGrid()
+
+        nodes, edges = getGraph()
+        distances, prevs = dijkstra(nodes, edges, pos)
+        route = findRoute(
+            prevs, pos, self.nextQueue.toTuple())
+
+        print(robot.robotNum, ttor(route))
+
+        robot.assignMission(ttor(route), 0)
 
 
 class ChuteCell(Cell):
@@ -65,11 +69,23 @@ class ChuteCell(Cell):
         super().__init__(x, y, w, h, self.color)
 
     def assign(self, robot):
-        pos = robot.lastPosition
+        pos = robot.currRobotPos().toGrid()
 
         nodes, edges = getGraph()
         distances, prevs = dijkstra(nodes, edges, pos)
         route = findRoute(
-            prevs, pos, (0, 0, Direction.E))
+            prevs, pos, (1, 0, Direction.W))
 
-        robot.assignOperation(route, None)
+        print(robot.robotNum, ttor(route))
+
+        robot.assignMission(ttor(route), 0)
+
+# tuple to route
+
+
+def ttor(route) -> list[Position]:
+    res = []
+    for i in route:
+        res.append(Position(i[0], i[1], i[2]))
+
+    return res

@@ -1,19 +1,8 @@
 # This Python file uses the following encoding: utf-8
-import heapq
-import os
 import sys
-import time
-from enum import Enum
 
-import PySide6.QtCore as QtCore
-from PySide6.QtCore import (QAbstractAnimation, QEasingCurve,
-                            QParallelAnimationGroup, QPoint,
-                            QPropertyAnimation, QVariantAnimation, Slot)
-from PySide6.QtGui import QPainter, QPixmap, QTransform
-from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout
+from PySide6.QtWidgets import QApplication, QMainWindow
 
-import pathfinding
-from robot import ROBOT_OPERATION, Robot
 from simulationview import SimulationView
 # Important:
 # You need to run the following command to generate the ui_form.py file
@@ -28,7 +17,7 @@ class MainWindow(QMainWindow):
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
 
-        self.view = SimulationView()
+        self.view = SimulationView.getInstance()
         self.setCentralWidget(self.view)
 
 

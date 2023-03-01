@@ -1,5 +1,9 @@
+from __future__ import annotations
+
 import heapq
-from enum import Enum, IntEnum
+from enum import IntEnum
+
+from PySide6.QtCore import QPoint
 
 cached = False
 nodes = None
@@ -7,32 +11,73 @@ edges = None
 
 
 class Direction(IntEnum):
-    N = 1
-    E = 2
-    S = 3
-    W = 4
+    N = 0
+    E = 1
+    S = 2
+    W = 3
 
 
-class Node:
-    def __init__(self, x, y, dir):
-        self.x = x
-        self.y = y
-        self.dir = dir
+class Position:
+    def __init__(self, x, y, direction) -> None:
+        self.x: int = int(x)
+        self.y: int = int(y)
+        self.direction: int = int(direction)
+
+    def __eq__(self, __o: object) -> bool:
+        return self.x == __o.x and self.y == __o.y and self.direction == __o.direction
+
+    def toGrid(self):
+        return (self.x//100, self.y//100, self.direction)
+
+    def degreeTo(self, p: Position) -> int:
+        return (p.direction-self.direction)*90
+
+    def point(self):
+        return QPoint(self.x, self.y)
+
+    def toTuple(self):
+        return (self.x, self.y, self.direction)
+
+    def degree(self):
+        return self.direction*90
+
+    def toView(self):
+        return Position(self.x*100, self.y*100, self.direction)
+
+
+class ViewPosition(Position):
+    def __init__(self, x, y, direction) -> None:
+        super().__init__(x, y, direction)
+
+    def toNodePos(self) -> NodePosition:
+        return NodePosition(self.x//100, self.y//100, self.direction)
+
+
+class NodePosition(Position):
+    def __init__(self, x, y, direction) -> None:
+        super().__init__(x, y, direction)
+
+    def toViewPos(self) -> ViewPosition:
+        return ViewPosition(self.x*100, self.y*100, self.direction)
+
+
 # todo: fix duplicates
 # currently, generate all path include duplicates
-# no backwards edge
 
 # todo: create class to edge/node and
 # src-dest-dist-startori-destori
 
 # todo: get graph from database as argument
 
-
-def generateGraph():
+# args from database
+def generateGraph(blocked=[]):
     length = 5
     nodes = [(i, j) for j in range(length) for i in range(length)]
     edges = {}
     orientedNodes = []
+
+    for b in blocked:
+        nodes.remove(b)
 
     # working: 4 directions
     def addEdge(primitiveSrc, primitiveDest, direction):
@@ -140,7 +185,6 @@ def findRoute(prevs, source, destination):
     return route
 
 
-def getGraph():
-    if not cached:
-        nodes, edges = generateGraph()
+def getGraph(b=[]):
+    nodes, edges = generateGraph(blocked=b)
     return nodes, edges
