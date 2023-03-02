@@ -10,7 +10,8 @@ from PySide6.QtWidgets import (QGraphicsLineItem, QGraphicsPixmapItem,
                                QGraphicsRectItem, QGraphicsScene,
                                QGraphicsView)
 
-from pathfinding import Direction, Position, dijkstra, findRoute, getGraph
+from pathfinding import (NodePos, backTrack, dijkstra, evaluateRoute,
+                         facingEach, generateGraph)
 
 ROBOT_EMPTY = "image/robot_empty.png"
 ROBOT_MINERAL = "image/robot_mineral.png"
@@ -25,22 +26,32 @@ DUR = 750
 class Robot(QGraphicsPixmapItem):
     _registry: list[Robot] = []
 
-    def __init__(self,  size: int, robotNum: int, position: Position):
+    def __init__(self,  size: int, robotNum: int, position: NodePos):
         self._registry.append(self)
 
         super().__init__(QPixmap(ROBOT_EMPTY).scaled(size, size))
-        self.setPos(position.x, position.y)
+        self.setPos(position.toViewPos().x, position.toViewPos().y)
         self.setTransformOriginPoint(size/2, size/2)
         self.setRotation(position.degree())
 
         self.signalObj = SignalInterface()
         self.robotNum = robotNum
 
+        self.box = 0
         self.sequence = 0
         self.route = [position]
-        self.box = None
 
-        print("init", position.x)
+        self.wait = False
+
+    def assignMission(self, route: list[NodePos], box: int = 0):
+        self.sequence = 0
+        self.route = route
+        self.box = box
+
+        if box != 0:
+            self.setPixmap(QPixmap(ROBOT_GAS).scaled(100, 100))
+
+        self.doNextOperation()
 
     '''
     ->
@@ -64,91 +75,110 @@ class Robot(QGraphicsPixmapItem):
 
     '''
 
-    def nextOperationPos(self) -> Position:
+    '''
+    ---->
+    1 2 3
+     R
+    
+    1:currrobot
+    2:curroppos
+    3:nextoppos
+    '''
+
+    def nextOperationPos(self) -> NodePos:
         s = self.sequence+1
         if s >= len(self.route):
-            s -= 1
-        # return self.route[s]
-        return self.route[s].toView()
+            s = len(self.route)-1
+        return self.route[s]
 
-    def currOperationPos(self) -> Position:
-        return self.route[self.sequence].toView()
+    def currOperationPos(self) -> NodePos:
+        s = self.sequence
+        if s >= len(self.route):
+            s = len(self.route)-1
+        return self.route[s]
 
-    def currRobotPos(self) -> Position:
-        p = self.pos()
-        return Position(p.x(), p.y(), (self.rotation()/90) % 4)
+    def currRobotPos(self) -> NodePos:
+        s = self.sequence-1
+        if s < 0:
+            s = 0
+        return self.route[s]
 
-    def assignMission(self, route: list[Position], box: int = 0):
-        self.sequence = 0
-        self.route = route
-        self.box = box
-
-        if box != 0:
-            self.setPixmap(QPixmap(ROBOT_GAS).scaled(100, 100))
-
-        self.doNextOperation()
+    # if robot is dumping
+    # seq=n-1
+    # nextoppos=n-1
+    # curroppos=n-1
+    # currrobotpos=n-2
+    # shit
 
     @Slot()
     def doNextOperation(self):
-        self.sequence += 1
+        if not self.wait:
+            self.sequence += 1
 
-        if self.sequence == len(self.route):
-            print(self.robotNum, "route finished")
+        self.wait = False
+        # print("robot", self.robotNum, "seq", self.sequence)
+
+        if self.sequence >= len(self.route):
+            self.sequence -= 1
             if self.box:
                 self.dumpOperation(750)
             else:
                 self.signalObj.missionFinished.emit(
-                    self.robotNum, self.currRobotPos())
+                    self.robotNum, self.currOperationPos())
             return
 
-        np = self.nextOperationPos()
+        # np = self.nextOperationPos()
         cp = self.currOperationPos()
         rp = self.currRobotPos()
 
         if rp.point() == cp.point():
-            print(self.robotNum, "rotate")
-            self.rotateAnimation(rp.degreeTo(cp), 750)
+            self.rotateAnimation(cp.degree() - rp.degree(), 750)
         else:
-            # avoid collision
-            # should i make scheduler on simulationview?
+
             for r in self._registry:
-                # if self.curroppos is r.curroppos and facing 1 0 2
-                oppocp = r.currOperationPos()
-                opporp = r.currRobotPos()
-                # if cp.point() == oppocp.point() and (cp.direction+oppocp.direction) % 2 == 0:
-                if cp.point() == oppocp.point():
-                    if self.robotNum < r.robotNum:
-                        # go around
-                        pos = self.currRobotPos().toGrid()
-                        nodes, edges = getGraph([oppocp.point().toTuple()])
-                        dist, prevs = dijkstra(nodes, edges, pos)
-                        nr = findRoute(
-                            prevs, pos, self.route[len(self.route)-1].toTuple())
-                        self.assignMission(nr, self.box)
-                        return
-                    else:
-                        self.waitOperation(DUR)
-                        return
-                # if self.curroppos is r.currobotpos and facing 1 2
-                # elif cp.point() == opporp.point() and (cp.direction+opporp.direction) % 2 == 0:
-                elif cp.point() == opporp.point():
-                    if (cp.direction+opporp.direction) % 2 == 0:
+                if r.robotNum == self.robotNum:
+                    continue
+
+                r_rp = r.currRobotPos()
+                r_cp = r.currOperationPos()
+
+                if cp.point() == r_rp.point():
+                    if facingEach(cp, r_rp):
                         if self.robotNum < r.robotNum:
-                            pos = self.currRobotPos().toGrid()
-                            nodes, edges = getGraph([oppocp.point().toTuple()])
-                            dist, prevs = dijkstra(nodes, edges, pos)
-                            nr = findRoute(
-                                prevs, pos, self.route[len(self.route)-1].toTuple())
-                            self.assignMission(nr, self.box)
-                            return
+                            route = evaluateRoute(self.currRobotPos(), self.route[len(
+                                self.route)-1], tempBlocked=[r_rp.point().toTuple()])
+
+                            self.assignMission(route, self.box)
                         else:
-                            self.waitOperation(DUR)
-                            return
-                    else:
-                        self.waitOperation(DUR)
+                            self.waitOperation(850)
+                            self.wait = True
                         return
-            print(self.robotNum, "move")
-            self.moveAnimation(cp.point(), DUR)
+                    else:
+                        self.waitOperation(850)
+                        self.wait = True
+                        return
+                elif cp.point() == r_cp.point():
+                    # if facingEach(cp, r_cp):
+                    #     if self.robotNum<r.robotNum:
+                    #         pass
+                    #     else:
+                    #         self.waitOperation(850)
+                    #         self.wait=True
+                    # else:
+                    #     pass
+                    # return
+
+                    # if self.robotNum < r.robotNum:
+                    #     break
+                    # else:
+                    #     self.waitOperation(850)
+                    #     self.wait = True
+                    #     return
+                    self.waitOperation(850)
+                    self.wait = True
+                    return
+
+            self.moveAnimation(cp.toViewPos().point(), 750)
 
     # def predictCollision(self)->bool:
         '''
@@ -179,7 +209,7 @@ class Robot(QGraphicsPixmapItem):
         lower priority wait
         '''
 
-    def rotateAnimation(self, degree, duration):
+    def rotateAnimation(self, degree: int, duration: int):
         anim = QVariantAnimation(self.signalObj)
         currRot = int(self.rotation())
         anim.setStartValue(currRot)
@@ -190,7 +220,7 @@ class Robot(QGraphicsPixmapItem):
         anim.finished.connect(self.doNextOperation)
         anim.start(QAbstractAnimation.DeleteWhenStopped)
 
-    def moveAnimation(self, destination, duration):
+    def moveAnimation(self, destination: QPoint, duration: int):
         anim = QVariantAnimation(self.signalObj)
         anim.setStartValue(QPoint(int(self.pos().x()), int(self.pos().y())))
         anim.setEndValue(destination)
@@ -200,17 +230,17 @@ class Robot(QGraphicsPixmapItem):
         anim.finished.connect(self.doNextOperation)
         anim.start(QAbstractAnimation.DeleteWhenStopped)
 
-    def dumpOperation(self, duration):
+    def dumpOperation(self, duration: int):
         self.setPixmap(QPixmap(ROBOT_EMPTY).scaled(100, 100))
         self.box = 0
-        self.waitOperation(duration)
+        QTimer.singleShot(duration, self.doNextOperation)
 
-    def waitOperation(self, duration):
+    def waitOperation(self, duration: int):
         QTimer.singleShot(duration, self.doNextOperation)
 
 
 class SignalInterface(QObject):
-    missionFinished = Signal(int, Position)
+    missionFinished = Signal(int, NodePos)
 
     def __init__(self) -> None:
         super().__init__()

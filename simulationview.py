@@ -2,7 +2,7 @@ from PySide6.QtCore import QPoint, QPointF, Qt, Slot
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsView
 
 from cell import Cell, ChuteCell, StationCell, StationQueueCell
-from pathfinding import Direction, Position
+from pathfinding import Direction, NodePos, Pos
 from robot import Robot
 
 CELL_SIZE = 100
@@ -21,36 +21,43 @@ class SimulationView(QGraphicsView):
         self.robots: list[Robot] = []
 
         # get data from file
+
         self.drawGrid(6, 500, 500)
 
-        chutes = [Position(4, 4, Direction.E), Position(2, 2, Direction.E)]
-        self.addCell(StationCell(0, 0, 100, 100, chutes))
+        chutes = [NodePos(2, 2, Direction.S)]
+        # chutes = [NodePos(4, 4, Direction.S), NodePos(2, 2, Direction.S)]
 
-        self.addCell(ChuteCell(400, 400, 100, 100))
-        self.addCell(ChuteCell(200, 200, 100, 100))
-
+        self.addCell(StationCell(0, 0, 100, 100, Direction.W, chutes))
         self.addCell(StationQueueCell(
-            100, 0, 100, 100, Position(0, 0, Direction.W)))
+            100, 0, 100, 100, 3, NodePos(0, 0, Direction.W)))
 
-        self.addRobot(100, Position(0, 0, Direction.S))
-        self.addRobot(100, Position(100, 0, Direction.W))
+        # self.addCell(ChuteCell(400, 400, 100, 100, 2, NodePos(1, 0, 3)))
+        self.addCell(ChuteCell(200, 200, 100, 100, 2, NodePos(1, 0, 3)))
 
-    @Slot(int, QPointF)
-    def missionFinishHandler(self, num: int, position: Position):
-        point = position.point()
+        self.addRobot(100, NodePos(0, 0, Direction.W))
+        self.addRobot(100, NodePos(1, 0, Direction.W))
+
+    @Slot(int, NodePos)
+    def missionFinishHandler(self, num: int, position: NodePos):
         for cell in self.cells:
-            if cell.rect().topLeft() == point:
+            if cell.nodePos == position:
                 cell.assign(self.robots[num])
                 return
 
-        print("robotnum ", num, "cell not found on ", position.point())
+        print("runtime fatal robotnum", num,
+              "cell not found on", position)
 
-    def addRobot(self, size, pos: Position):
+    def start(self):
+        for r in self.robots:
+            r.signalObj.missionFinished.connect(self.missionFinishHandler)
+            r.signalObj.missionFinished.emit(r.robotNum, r.currRobotPos())
+
+    def addRobot(self, size, pos: NodePos):
         rect = Robot(size, len(self.robots), pos)
         self.scene.addItem(rect)
         self.robots.append(rect)
 
-    def addCell(self, cell):
+    def addCell(self, cell: Cell):
         self.scene.addItem(cell)
         self.cells.append(cell)
 
@@ -58,12 +65,6 @@ class SimulationView(QGraphicsView):
         for i in range(cells):
             self.scene.addLine(0, i*100, width, i*100)
             self.scene.addLine(i*100, 0, i*100, height)
-
-    def start(self):
-        for r in self.robots:
-            r.signalObj.missionFinished.connect(self.missionFinishHandler)
-            print("start ", r.nextOperationPos().x)
-            r.signalObj.missionFinished.emit(r.robotNum, r.nextOperationPos())
 
     @classmethod
     def getInstance(cls):

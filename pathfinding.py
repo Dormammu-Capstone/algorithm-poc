@@ -5,10 +5,6 @@ from enum import IntEnum
 
 from PySide6.QtCore import QPoint
 
-cached = False
-nodes = None
-edges = None
-
 
 class Direction(IntEnum):
     N = 0
@@ -17,7 +13,7 @@ class Direction(IntEnum):
     W = 3
 
 
-class Position:
+class Pos:
     def __init__(self, x, y, direction) -> None:
         self.x: int = int(x)
         self.y: int = int(y)
@@ -26,157 +22,135 @@ class Position:
     def __eq__(self, __o: object) -> bool:
         return self.x == __o.x and self.y == __o.y and self.direction == __o.direction
 
-    def toGrid(self):
-        return (self.x//100, self.y//100, self.direction)
+    def __hash__(self) -> int:
+        return hash("x%dy%dd%d" % (self.x, self.y, self.direction))
 
-    def degreeTo(self, p: Position) -> int:
-        return (p.direction-self.direction)*90
+    def __repr__(self) -> str:
+        return "x:%d y:%d dir:%d" % (self.x, self.y, self.direction)
 
     def point(self):
         return QPoint(self.x, self.y)
 
-    def toTuple(self):
-        return (self.x, self.y, self.direction)
-
     def degree(self):
         return self.direction*90
 
-    def toView(self):
-        return Position(self.x*100, self.y*100, self.direction)
 
-
-class ViewPosition(Position):
+class ViewPos(Pos):
     def __init__(self, x, y, direction) -> None:
         super().__init__(x, y, direction)
 
-    def toNodePos(self) -> NodePosition:
-        return NodePosition(self.x//100, self.y//100, self.direction)
+    def toNodePos(self) -> NodePos:
+        return NodePos(self.x//100, self.y//100, self.direction)
+
+    def __eq__(self, __o: object) -> bool:
+        return type(__o) is ViewPos and super().__eq__(__o)
+
+    def __hash__(self) -> int:
+        return super().__hash__()
 
 
-class NodePosition(Position):
+class NodePos(Pos):
     def __init__(self, x, y, direction) -> None:
         super().__init__(x, y, direction)
 
-    def toViewPos(self) -> ViewPosition:
-        return ViewPosition(self.x*100, self.y*100, self.direction)
+    def toViewPos(self) -> ViewPos:
+        return ViewPos(self.x*100, self.y*100, self.direction)
 
+    def __eq__(self, __o: object) -> bool:
+        return type(__o) is NodePos and super().__eq__(__o)
+
+    def __hash__(self) -> int:
+        return super().__hash__()
+
+    def __lt__(self, __o: object) -> bool:
+        return True
+
+
+def facingEach(a: NodePos, b: NodePos):
+    return (a.direction+b.direction) % 2 == 0
 
 # todo: fix duplicates
 # currently, generate all path include duplicates
-
-# todo: create class to edge/node and
-# src-dest-dist-startori-destori
-
 # todo: get graph from database as argument
 
-# args from database
-def generateGraph(blocked=[]):
+
+def generateGraph(tempBlocked: list[tuple[int, int]] = []):
     length = 5
     nodes = [(i, j) for j in range(length) for i in range(length)]
-    edges = {}
-    orientedNodes = []
+    edges: dict[NodePos, list[tuple[NodePos, int]]] = {}
+    orientedNodes: list[NodePos] = []
 
-    for b in blocked:
+    for b in tempBlocked:
         nodes.remove(b)
 
-    # working: 4 directions
-    def addEdge(primitiveSrc, primitiveDest, direction):
-        orientedNode = (*primitiveSrc, direction)
-        if orientedNode not in edges:
-            edges[orientedNode] = []
+    for n in nodes:
+        for i in range(4):
+            add = NodePos(n[0], n[1], i)
+            orientedNodes.append(add)
+            edges[add] = []
 
-        edges[orientedNode].append(
-            ((*primitiveDest, direction), 1000))
+    for n in orientedNodes:
 
-    for node in nodes:
-        # todo: after get map from database, check this cell is good to go
-        if (node[0]-1, node[1]) in nodes:
-            addEdge(node, (node[0]-1, node[1]), Direction.W)
-            orientedNodes.append((*node, Direction.W))
-        if (node[0]+1, node[1]) in nodes:
-            addEdge(node, (node[0]+1, node[1]), Direction.E)
-            orientedNodes.append((*node, Direction.E))
-        if (node[0], node[1]-1) in nodes:
-            addEdge(node, (node[0], node[1]-1), Direction.N)
-            orientedNodes.append((*node, Direction.N))
-        if (node[0], node[1]+1) in nodes:
-            addEdge(node, (node[0], node[1]+1), Direction.S)
-            orientedNodes.append((*node, Direction.S))
+        # if data from file maybe addnode() may skip undescribed clockwise edges
 
-        # assume all cells are intersection to 4 direction
-        # todo: determine cell is intersection 4, intersection 3, straight, corner
-        enode = (*node, Direction.E)
-        wnode = (*node, Direction.W)
-        snode = (*node, Direction.S)
-        nnode = (*node, Direction.N)
+        clockwise, counterwise = 0, 0
+        if n.direction == 0:
+            clockwise, counterwise = 1, 3
+        elif n.direction == 3:
+            clockwise, counterwise = 0, 2
+        else:
+            clockwise, counterwise = n.direction+1, n.direction-1
+        edges[n].append((NodePos(n.x, n.y, clockwise), 10))
+        edges[n].append((NodePos(n.x, n.y, counterwise), 10))
 
-        orientedNodes.append(enode)
-        orientedNodes.append(wnode)
-        orientedNodes.append(snode)
-        orientedNodes.append(nnode)
+        # check adjacent cell/node
+        # if data from file
 
-        if enode not in edges:
-            edges[enode] = []
-        if wnode not in edges:
-            edges[wnode] = []
-        if snode not in edges:
-            edges[snode] = []
-        if nnode not in edges:
-            edges[nnode] = []
-
-        if enode in orientedNodes:
-            if snode in orientedNodes:
-                edges[enode].append((snode, 1000))
-            if nnode in orientedNodes:
-                edges[enode].append((nnode, 1000))
-        if wnode in orientedNodes:
-            if snode in orientedNodes:
-                edges[wnode].append((snode, 1000))
-            if nnode in orientedNodes:
-                edges[wnode].append((nnode, 1000))
-        if snode in orientedNodes:
-            if enode in orientedNodes:
-                edges[snode].append((enode, 1000))
-            if wnode in orientedNodes:
-                edges[snode].append((wnode, 1000))
-        if nnode in orientedNodes:
-            if enode in orientedNodes:
-                edges[nnode].append((enode, 1000))
-            if wnode in orientedNodes:
-                edges[nnode].append((wnode, 1000))
+        if n.direction == 0:
+            if NodePos(n.x, n.y-1, n.direction) in orientedNodes:
+                edges[n].append((NodePos(n.x, n.y-1, n.direction), 10))
+        if n.direction == 1:
+            if NodePos(n.x+1, n.y, n.direction) in orientedNodes:
+                edges[n].append((NodePos(n.x+1, n.y, n.direction), 10))
+        if n.direction == 2:
+            if NodePos(n.x, n.y+1, n.direction) in orientedNodes:
+                edges[n].append((NodePos(n.x, n.y+1, n.direction), 10))
+        if n.direction == 3:
+            if NodePos(n.x-1, n.y, n.direction) in orientedNodes:
+                edges[n].append((NodePos(n.x-1, n.y, n.direction), 10))
 
     return orientedNodes, edges
 
 
-def dijkstra(nodes, edges, source):
+def dijkstra(nodes: list[NodePos], edges: dict[NodePos, list[tuple[NodePos, int]]], src: NodePos):
     distances = {node: float('inf') for node in nodes}
-    distances[source] = 0
+    prevs: dict[NodePos, NodePos] = {node: None for node in nodes}
+    queue: list[tuple[float, NodePos]] = []
 
-    prevs = {node: None for node in nodes}
-
-    queue = []
-    heapq.heappush(queue, (distances[source], source))
+    distances[src] = 0
+    heapq.heappush(queue, (distances[src], src))
 
     while queue:
-        currentDistance, currentNode = heapq.heappop(queue)
-        if distances[currentNode] < currentDistance:
+        currDist, currNode = heapq.heappop(queue)
+
+        if distances[currNode] < currDist:
             # dont need to visit current_distance to current route
             # cuz current route is longer
             continue
 
-        for neighbor, weight in edges[currentNode]:
-            alt = currentDistance + weight
+        for neighbor, weight in edges[currNode]:
+            alt = currDist + weight
             if alt < distances[neighbor]:
                 distances[neighbor] = alt
                 heapq.heappush(queue, (alt, neighbor))
 
-                prevs[neighbor] = currentNode
+                prevs[neighbor] = currNode
 
     return distances, prevs
 
 
-def findRoute(prevs, source, destination):
-    route = [destination]
+def backTrack(prevs: dict[NodePos, NodePos], source: NodePos, destination: NodePos):
+    route: list[NodePos] = [destination]
 
     currentTrace = destination
     while currentTrace != source:
@@ -185,6 +159,10 @@ def findRoute(prevs, source, destination):
     return route
 
 
-def getGraph(b=[]):
-    nodes, edges = generateGraph(blocked=b)
-    return nodes, edges
+def evaluateRoute(src: NodePos, dest: NodePos, tempBlocked: list[tuple[int, int]] = []):
+    nodes, edges = generateGraph(tempBlocked=tempBlocked)
+    distances, prevs = dijkstra(nodes, edges, src)
+    route = backTrack(
+        prevs, src, dest)
+
+    return route

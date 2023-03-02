@@ -3,6 +3,7 @@ import sys
 
 from PySide6.QtWidgets import QApplication, QMainWindow
 
+from pathfinding import Pos, ViewPos, backTrack, dijkstra, generateGraph
 from simulationview import SimulationView
 # Important:
 # You need to run the following command to generate the ui_form.py file
