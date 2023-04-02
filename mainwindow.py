@@ -2,8 +2,9 @@
 import sys
 
 from PySide6.QtWidgets import QApplication, QMainWindow
+from db import queryMap
 
-from pathfinding import Pos, ViewPos, backTrack, dijkstra, generateGraph
+from pathfinding import Pos, ViewPos, backTrack, dijkstra, generateGraph, registerMap
 from simulationview import SimulationView
 # Important:
 # You need to run the following command to generate the ui_form.py file
@@ -25,6 +26,10 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     mainWindow = MainWindow()
+
+    cells, grid = queryMap("test")
+    registerMap(cells, grid)
+    mainWindow.view.generateMap(cells, grid)
 
     mainWindow.view.start()
     mainWindow.show()

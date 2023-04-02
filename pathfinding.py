@@ -13,6 +13,11 @@ class Direction(IntEnum):
     W = 3
 
 
+# class that have only x,y
+
+
+# is it necessary nodepos and viewpos are child of pos?
+# maybe what we need is just node (x,y)
 class Pos:
     def __init__(self, x, y, direction) -> None:
         self.x: int = int(x)
@@ -69,16 +74,28 @@ class NodePos(Pos):
 def facingEach(a: NodePos, b: NodePos):
     return (a.direction+b.direction) % 2 == 0
 
-# todo: fix duplicates
-# currently, generate all path include duplicates
-# todo: get graph from database as argument
+
+graphx = 0
+graphy = 0
+cells = {}
+
+
+def registerMap(icells, grid):
+    global graphx
+    global graphy
+    global cells
+    cells = icells
+    graphx = grid[0]
+    graphy = grid[1]
 
 
 def generateGraph(tempBlocked: list[tuple[int, int]] = []):
-    length = 5
-    nodes = [(i, j) for j in range(length) for i in range(length)]
+    nodes = [(i, j) for j in range(graphx) for i in range(graphy)]
     edges: dict[NodePos, list[tuple[NodePos, int]]] = {}
     orientedNodes: list[NodePos] = []
+
+    # fix nodes with map from db
+    # for cells[blocked] nodes.remove
 
     for b in tempBlocked:
         nodes.remove(b)
@@ -90,9 +107,7 @@ def generateGraph(tempBlocked: list[tuple[int, int]] = []):
             edges[add] = []
 
     for n in orientedNodes:
-
         # if data from file maybe addnode() may skip undescribed clockwise edges
-
         clockwise, counterwise = 0, 0
         if n.direction == 0:
             clockwise, counterwise = 1, 3
@@ -162,7 +177,18 @@ def backTrack(prevs: dict[NodePos, NodePos], source: NodePos, destination: NodeP
 def evaluateRoute(src: NodePos, dest: NodePos, tempBlocked: list[tuple[int, int]] = []):
     nodes, edges = generateGraph(tempBlocked=tempBlocked)
     distances, prevs = dijkstra(nodes, edges, src)
-    route = backTrack(
-        prevs, src, dest)
+    return backTrack(prevs, src, dest)
 
-    return route
+
+def evaluateRouteToCell(src: NodePos, dest: tuple[int, int]):
+    nodes, edges = generateGraph()
+    distances, prevs = dijkstra(nodes, edges, src)
+    min = (None, float('inf'))
+    for i in range(4):
+        temp = NodePos(dest[0], dest[1], i)
+
+        tempdist = distances[temp]
+        if tempdist < min[1]:
+            min = (temp, tempdist)
+
+    return backTrack(prevs, src, min[0])
