@@ -33,7 +33,6 @@ class StationCell(Cell):
     def assign(self, robot: Robot):
         route = evaluateRouteToCell(
             robot.route[len(robot.route)-1], self.nextCargo())
-        # route = evaluateRouteToCell(robot.currRobotPos(), self.nextCargo())
         robot.assignMission(route, 8)
 
 
@@ -47,14 +46,12 @@ class StationQueueCell(Cell):
     def assign(self, robot: Robot):
         route = evaluateRouteToCell(
             robot.route[len(robot.route)-1], self.nextQueue)
-        # route = evaluateRouteToCell(robot.currRobotPos(), self.nextQueue)
         robot.assignMission(route, 0)
 
 
 class ChuteCell(Cell):
     color = Qt.red
 
-    # returnpos maybe found dynamically
     def __init__(self, x, y, w, h, returnPos: tuple[int, int]):
         super().__init__(x, y, w, h, self.color)
         self.returnPos = returnPos
@@ -62,5 +59,4 @@ class ChuteCell(Cell):
     def assign(self, robot: Robot):
         route = evaluateRouteToCell(
             robot.route[len(robot.route)-1], self.returnPos)
-        # route = evaluateRouteToCell(robot.currRobotPos(), self.returnPos)
         robot.assignMission(route, 0)

@@ -176,7 +176,7 @@ def backTrack(prevs: dict[NodePos, NodePos], source: NodePos, destination: NodeP
 
 def evaluateRoute(src: NodePos, dest: NodePos, tempBlocked: list[tuple[int, int]] = []):
     nodes, edges = generateGraph(tempBlocked=tempBlocked)
-    distances, prevs = dijkstra(nodes, edges, src)
+    _, prevs = dijkstra(nodes, edges, src)
     return backTrack(prevs, src, dest)
 
 

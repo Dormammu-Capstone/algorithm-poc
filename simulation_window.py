@@ -1,17 +1,16 @@
-from PySide6.QtCore import QPoint, QPointF, Qt, Slot
-from PySide6.QtWidgets import QGraphicsScene, QGraphicsView
+from time import time
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 from PySide6.QtGui import QCloseEvent
+from PySide6.QtWidgets import QGraphicsScene, QGraphicsView
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtCore import Slot
 
 from cell import Cell, ChuteCell, StationCell, StationQueueCell
-from pathfinding import Direction, NodePos, Pos, registerMap
+from pathfinding import Direction, NodePos, registerMap
 from robot import Robot
+from simulationview import CELLSIZE
 
 CELLSIZE = 100
-
-cells1 = {'chute': [((2, 2), (1, 0))], 'workstation': [
-    ((0, 0), [(2, 2)])], 'stationqueue': [((1, 0), (0, 0))]}
-grid1 = (5, 6)
-robots1 = [NodePos(0, 0, Direction.W), NodePos(1, 0, Direction.W)]
 
 cells2 = {'chute': [((2, 0), (0, 0)), ((2, 1), (0, 0)), ((2, 2), (0, 2))], 'workstation': [
     ((0, 1), [(2, 0), (2, 1), (2, 2)])], 'stationqueue': [((0, 0), (0, 1)), ((0, 2), (0, 1))]}
@@ -20,21 +19,38 @@ robots2 = [NodePos(0, 0, Direction.W), NodePos(
     0, 1, Direction.W), NodePos(0, 2, Direction.N)]
 
 
-class SimulationView(QGraphicsView):
-    _instance = None
+class SimulationWindow(QWidget):
+    def __init__(self, title='new simulation') -> None:
+        super().__init__(None)
+        self.setWindowTitle(title)
+        '''
+        todo: input
+        robots:list[Robot]
+        map
+        
+        del self -> use signal -> then parent class delete 
+        '''
 
-    def __init__(self):
-        super().__init__()
+        self.time = time()
+
+        self.setLayout(QHBoxLayout())
         self.scene = QGraphicsScene()
-        self.setScene(self.scene)
+        self.view = QGraphicsView(self.scene, self)
+        self.layout().addWidget(self.view)
 
         self.cells: list[Cell] = []
         self.robots: list[Robot] = []
 
         self.generateMap(cells2, grid2)
         self.deployRobots(robots2)
-        # self.generateMap(cells1, grid1)
-        # self.deployRobots(robots1)
+        # self.start()
+
+        self.newbutton = QLabel(self)
+        self.newbutton.setText('start')
+        self.layout().addWidget(self.newbutton)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        print(time()-self.time)
 
     @Slot(int, NodePos)
     def missionFinishHandler(self, num: int, position: NodePos):
@@ -48,22 +64,27 @@ class SimulationView(QGraphicsView):
 
     def start(self):
         for r in self.robots:
-            r.signalObj.missionFinished.connect(self.missionFinishHandler)
             r.signalObj.missionFinished.emit(
                 r.robotNum, r.route[len(r.route)-1])
 
-    def addRobot(self, size, pos: NodePos):
-        rect = Robot(size, len(self.robots), pos)
-        self.scene.addItem(rect)
-        self.robots.append(rect)
+    def deployRobots(self, posList: list[NodePos]):
+        for p in posList:
+            r = Robot(CELLSIZE, len(self.robots), p)
+            r.signalObj.missionFinished.connect(self.missionFinishHandler)
+            self.robots.append(r)
+            self.scene.addItem(r)
 
     def addCell(self, cell: Cell):
         self.scene.addItem(cell)
         self.cells.append(cell)
 
     def generateMap(self, cells: dict[str, list], grid: tuple[int, int]):
-        self.setSceneRect(0, 0, grid[0]*CELLSIZE, grid[1]*CELLSIZE)
+        # self.setSceneRect(0, 0, grid[0]*CELLSIZE, grid[1]*CELLSIZE)
         registerMap(cells, grid)
+        '''
+        todo: pathfinding or map data to each window
+            if each window can have different maps
+        '''
 
         for i in range(grid[0]+1):
             self.scene.addLine(i*CELLSIZE, 0, i*CELLSIZE, grid[1]*CELLSIZE)
@@ -95,13 +116,3 @@ class SimulationView(QGraphicsView):
             else:
                 print("nothing")
                 pass
-
-    def deployRobots(self, posList: list[NodePos]):
-        for p in posList:
-            self.addRobot(100, p)
-
-    @classmethod
-    def getInstance(cls):
-        if not cls._instance:
-            cls._instance = SimulationView()
-        return cls._instance

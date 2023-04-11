@@ -23,6 +23,8 @@ ROBOT_MISSION = Enum("ROBOT_MISSION", "CARRYING RETURNING")
 DUR = 750
 WDUR = 850
 
+DEAD_THRESHOLD = 7
+
 
 class Robot(QGraphicsPixmapItem):
     _registry: list[Robot] = []
@@ -41,9 +43,10 @@ class Robot(QGraphicsPixmapItem):
         self.box = 0
         self.sequence = 0
         self.route = [position]
+        self.priority = robotNum
 
         self.wait = False
-        self.deadlockState = False
+        self.deadlockedCounter = 0
 
         # detect deadlock
         # self.wait : int
@@ -52,6 +55,7 @@ class Robot(QGraphicsPixmapItem):
     def assignMission(self, route: list[NodePos], box: int = 0):
         self.sequence = 0
         self.route = route
+        self.priority = self.robotNum
         self.box = box
         if box != 0:
             self.setPixmap(QPixmap(ROBOT_GAS).scaled(100, 100))
@@ -64,122 +68,53 @@ class Robot(QGraphicsPixmapItem):
     operationposopponent (operationposmoving)
     '''
 
-    # def nextOperationPos(self) -> NodePos:
-    #     s = self.sequence+1
-    #     if s >= len(self.route):
-    #         s = len(self.route)-1
-    #     return self.route[s]
-
-    # def currOperationPos(self) -> NodePos:
-    #     s = self.sequence
-    #     if s >= len(self.route):
-    #         s = len(self.route)-1
-    #     return self.route[s]
-
     def currOperationPosWait(self) -> NodePos:
         # seq is not accumulated
         if self.wait:
             return self.route[self.sequence]
 
-        # s = self.sequence
-        # routelen = len(self.route)
-        # if s >= routelen:
-        #     return self.route[routelen-1]
         if self.sequence+1 == len(self.route):
             return self.route[self.sequence]
         return self.route[self.sequence]
-
-    def currRobotPos(self) -> NodePos:
-        s = self.sequence-1
-        if s < 0:
-            s = 0
-        return self.route[s]
 
     def currRobotPosWait(self):
         if self.sequence == 0 or self.wait:
             return self.route[self.sequence]
         return self.route[self.sequence-1]
 
-    # def proceedSequence(self):
-    #     if not self.wait:
-    #         self.sequence += 1
-    #     self.wait = False
-
-    # @Slot()
-    # def doNextOperation(self):
-    #     self.proceedSequence()
-
-    #     if self.sequence >= len(self.route):
-    #         self.finishMission()
-    #         return
-
-    #     # np = self.nextOperationPos()
-    #     cp = self.currOperationPos()
-    #     rp = self.currRobotPos()
-
-    #     if rp.point() == cp.point():
-    #         self.rotateOperation(cp.degree() - rp.degree(), 750)
-    #     else:
-    #         # self.evadeCollision()
-
-    #         for r in self._registry:
-    #             if r.robotNum == self.robotNum:
-    #                 continue
-
-    #             r_rp = r.currRobotPos()
-    #             r_cp = r.currOperationPos()
-
-    #             if cp.point() == r_rp.point():
-    #                 if facingEach(cp, r_rp):
-    #                     if self.robotNum < r.robotNum:
-    #                         route = evaluateRoute(self.currRobotPos(), self.route[len(
-    #                             self.route)-1], tempBlocked=[r_rp.point().toTuple()])
-
-    #                         self.assignMission(route, self.box)
-    #                     else:
-    #                         self.waitOperation(850)
-    #                     return
-    #                 else:
-    #                     self.waitOperation(850)
-    #                     return
-    #             elif cp.point() == r_cp.point():
-    #                 # if facingEach(cp, r_cp):
-    #                 #     if self.robotNum<r.robotNum:
-    #                 #         pass
-    #                 #     else:
-    #                 #         self.waitOperation(850)
-    #                 #         self.wait=True
-    #                 # else:
-    #                 #     pass
-    #                 # return
-
-    #                 # if self.robotNum < r.robotNum:
-    #                 #     break
-    #                 # else:
-    #                 #     self.waitOperation(850)
-    #                 #     self.wait = True
-    #                 #     return
-    #                 self.waitOperation(850)
-    #                 self.wait = True
-    #                 return
-
-    #         self.moveOperation(cp.toViewPos().point(), 750)
-
     @Slot()
     def doNextOperation(self):
         if self.sequence + 1 == len(self.route):
-            self.finishMission2()
+            self.finishMission()
             return
 
-        # robot is reached this cell just right now!
-        next_op_dest = self.route[self.sequence+1]
-        curr_robot_pos = self.route[self.sequence]
+        if self.deadlockedCounter >= DEAD_THRESHOLD:
+            # this idea is not testable
+            # find all robots
+            bots: list[Robot] = []
+            selfPos = self.route[self.sequence].point().toTuple()
+            for r in self._registry:
+                neighborPos = r.route[r.sequence].point().toTuple()
+                if r.wait:
+                    if neighborPos == (selfPos[0], selfPos[1]-1) or neighborPos == (selfPos[0], selfPos[1]+1) or neighborPos == (selfPos[0]-1, selfPos[1]) or neighborPos == (selfPos[0]+1, selfPos[1]):
+                        bots.append(r)
 
-        if curr_robot_pos.point() == next_op_dest.point():
+            for r in bots:
+                # i think tempblocked should be nodepos
+                # each cell can assign "align" mission to robot
+                # to dump or get box
+                route = evaluateRoute(r.route[r.sequence], r.route[len(
+                    r.route)-1], tempBlocked=[r.route[r.sequence+1].point().toTuple()])
+                r.assignMission()
+
+        # robot is reached this cell just right now!
+        degreeDiff = self.route[self.sequence +
+                                1].degree()-self.route[self.sequence].degree()
+
+        if degreeDiff != 0:
             self.wait = False
             self.sequence += 1
-            self.rotateOperation(next_op_dest.degree() -
-                                 curr_robot_pos.degree(), 750)
+            self.rotateOperation(degreeDiff, 750)
         else:
             self.evadeCollision()
 
@@ -190,7 +125,6 @@ class Robot(QGraphicsPixmapItem):
     '''
 
     def evadeCollision(self):
-        # robot is reached just right now!
         self_op_dest = self.route[self.sequence+1]
 
         for r in self._registry:
@@ -200,16 +134,7 @@ class Robot(QGraphicsPixmapItem):
             opCurrPos = r.currRobotPosWait()
             opOperPos = r.currOperationPosWait()
 
-            # self is finished operation just right now!
-            '''
-            waitoperation's destination is currrobotpos
-            so seq - 1 ???
-            then currrobotpos() value changes
-            so.. curroperationpos() if self.wait() then route[self.seq-1]
-
-            instead self.seq-1
-            curroperationposwait() return currrobotpos()
-            '''
+            # maybe do not use of these...
 
             '''
             1 0 2
@@ -220,75 +145,49 @@ class Robot(QGraphicsPixmapItem):
             0
             2
             '''
+            # self is finished operation just right now!
+            # self.seq is not accumulated!
 
-            if self_op_dest.point() == opOperPos.point():
+            if not r.wait and self_op_dest.point() == opOperPos.point():
+                print("op")
                 self.waitOperation(WDUR)
                 return
 
             elif self_op_dest.point() == opCurrPos.point():
                 if facingEach(self_op_dest, opCurrPos):
-                    # solve deadlock
-                    if self.priority() < r.priority():
-                        route = evaluateRoute(self.currRobotPos(), self.route[len(
+                    print("facing")
+
+                    # if tempblocked is one of deadlocked robots destination??
+                    if self.route[len(self.route)-1].point() == opCurrPos.point():
+                        self.priority += 1
+
+                    if self.priority < r.priority:
+                        # call maybe..upper conflict resolver?
+                        print("evaluate")
+                        # if tempblocked is one of deadlocked robots destination??
+                        # tempblocked should be nodepos?
+                        route = evaluateRoute(self.route[self.sequence], self.route[len(
                             self.route)-1], tempBlocked=[opCurrPos.point().toTuple()])
                         self.assignMission(route, self.box)
                         return
                     else:
+                        print(self.robotNum, "evaluate else",
+                              self.priority, r.priority)
                         self.waitOperation(WDUR)
                         return
 
                 else:
+                    print("not facing")
                     self.waitOperation(WDUR)
                     return
 
         self.wait = False
         self.sequence += 1
-        print("robot", self.robotNum, "seq", self.sequence,
-              "goto", self.route[self.sequence], self.route)
         self.moveOperation(
             self.route[self.sequence].toViewPos().point(), DUR)
         return
 
-        '''
-        policy type : live evasion
-        (other type is predict with every robot route)
-
-        collision evasion
-        if two robots are facing each
-        lower priority go around
-
-        if robots have two cells between 1 O O 2
-        two next position are against
-        one go around
-        lets go simple - 1 2
-
-        -- 1s perspective --
-        1s next is 2s current opposite direction
-
-        if robots have one cell between 1 O 2
-        1s next is 2s next
-        one go around
-
-        1 0 2
-        if 2 go and turn left/right
-        no i think this may solved by 1st solution
-
-        if two robots not face (ㄱ)
-        lower priority wait
-        '''
-
-    def priority(self):
-        return self.robotNum
-
-    # def finishMission(self):
-    #     if self.box:
-    #         self.sequence -= 1
-    #         self.dumpOperation(750)
-    #     else:
-    #         self.signalObj.missionFinished.emit(
-    #             self.robotNum, self.currRobotPos())
-
-    def finishMission2(self):
+    def finishMission(self):
         if self.box:
             self.dumpOperation(750)
         else:
@@ -307,6 +206,8 @@ class Robot(QGraphicsPixmapItem):
         anim.start(QAbstractAnimation.DeleteWhenStopped)
 
     def moveOperation(self, destination: QPoint, duration: int):
+        self.deadlockedCounter = 0
+
         anim = QVariantAnimation(self.signalObj)
         anim.setStartValue(QPoint(int(self.pos().x()), int(self.pos().y())))
         anim.setEndValue(destination)
@@ -324,6 +225,9 @@ class Robot(QGraphicsPixmapItem):
 
     def waitOperation(self, duration: int):
         self.wait = True
+        self.deadlockedCounter += 1
+        print(self.robotNum, "wait", self.route)
+        print(self.robotNum, "deadlock", self.deadlockedCounter)
         QTimer.singleShot(duration, self.doNextOperation)
 
 

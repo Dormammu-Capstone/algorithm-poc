@@ -1,8 +1,10 @@
 # This Python file uses the following encoding: utf-8
 import sys
 
-from PySide6.QtWidgets import QApplication, QMainWindow
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget
+from PySide6.QtCore import Slot, Qt
 from db import queryMap
+from PySide6.QtGui import QCloseEvent
 
 from pathfinding import Pos, ViewPos, backTrack, dijkstra, generateGraph, registerMap
 from simulationview import SimulationView
@@ -22,16 +24,20 @@ class MainWindow(QMainWindow):
         self.view = SimulationView.getInstance()
         self.setCentralWidget(self.view)
 
+        self.setAttribute(Qt.WA_DeleteOnClose, True)
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     mainWindow = MainWindow()
 
-    cells, grid = queryMap("test")
-    registerMap(cells, grid)
-    mainWindow.view.generateMap(cells, grid)
+    mainWindow.setWindowTitle("newtitle")
 
-    mainWindow.view.start()
     mainWindow.show()
+    mainWindow.view.start()
+
+    second = QMainWindow()
+    second.setWindowTitle("hello new window")
+    second.show()
 
     sys.exit(app.exec())
