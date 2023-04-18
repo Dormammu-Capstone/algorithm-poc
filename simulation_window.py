@@ -1,7 +1,7 @@
 import sys, os
 from time import time
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget, QMainWindow
-from PySide6.QtGui import QCloseEvent, QPen
+from PySide6.QtGui import QCloseEvent, QPen, QPainter
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsView, QGraphicsEllipseItem
 from PySide6.QtWidgets import QVBoxLayout, QDialog
 from PySide6.QtCore import *
@@ -41,14 +41,20 @@ class SimulationWindow(QWidget):
         #     else :
         #         self.cellobject2 = CellObject(100, 100, 100)
         
-        self.cellobject = CellObject(0, 0, 100)
-        self.cellobject2 = CellObject(100, 0, 100)
+        
         self.setLayout(QHBoxLayout())
         self.scene = QGraphicsScene()
+        self.view = QGraphicsView(self.scene, self)
+
+        self.pen = QPen()
+        self.pen.setStyle(Qt.PenStyle.NoPen)
+        self.layout().addWidget(self.view)
+        self.cellobject = CellObject(0, 0, 100)
+        self.cellobject2 = CellObject(100, 0, 100)
+        self.cellobject.setPen(self.pen)
+        self.cellobject2.setPen(self.pen)
         self.scene.addItem(self.cellobject)
         self.scene.addItem(self.cellobject2)
-        self.view = QGraphicsView(self.scene, self)
-        self.layout().addWidget(self.view)
 
         self.cells: list[Cell] = []
         self.robots: list[Robot] = []
@@ -76,8 +82,6 @@ class SimulationWindow(QWidget):
         print("runtime fatal robotnum", num,
               "cell not found on", position)
     
-    def showText1(self):
-        print("clicked")
 
     def start(self):
         for r in self.robots:
@@ -138,12 +142,10 @@ class SimulationWindow(QWidget):
 class CellObject(QGraphicsEllipseItem):
     def __init__(self, x, y, r):
         super().__init__(0, 0, r, r)
-        self.setPos(x, y)
+        self.setPos(x, y)   
         self.setAcceptHoverEvents(True)
     def mousePressEvent(self, event):
-        print("mousepress")
         self.popup = CellinfoWindow()
-        print("before opened")
         self.popup.exec()
         
 def resource_path(relative_path):

@@ -1,14 +1,15 @@
 from __future__ import annotations
-
+import sys, os
 from enum import Enum
 
 from PySide6.QtCore import (QAbstractAnimation, QEasingCurve, QObject, QPoint,
                             QPointF, Qt, QTimer, QVariantAnimation, Signal,
-                            Slot)
-from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QTransform
+                            Slot, QRectF)
+from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QTransform, QBrush
 from PySide6.QtWidgets import (QGraphicsLineItem, QGraphicsPixmapItem,
-                               QGraphicsRectItem, QGraphicsScene,
-                               QGraphicsView)
+                               QGraphicsRectItem, QGraphicsScene, QWidget, 
+                               QGraphicsView, QApplication, QGraphicsItem, QDialog)
+from PySide6.QtUiTools import loadUiType
 
 from pathfinding import (NodePos, backTrack, dijkstra, evaluateRoute,
                          facingEach, generateGraph)
@@ -25,18 +26,24 @@ WDUR = 850
 
 DEAD_THRESHOLD = 7
 
-
-class Robot(QGraphicsPixmapItem):
+class Robot(QGraphicsPixmapItem, QGraphicsItem):
     _registry: list[Robot] = []
 
     def __init__(self,  size: int, robotNum: int, position: NodePos):
         self._registry.append(self)
-
+        global rsize
+        rsize = size
+   
         super().__init__(QPixmap(ROBOT_EMPTY).scaled(size, size))
         self.setPos(position.toViewPos().x, position.toViewPos().y)
         self.setTransformOriginPoint(size/2, size/2)
         self.setRotation(position.degree())
+        self.setAcceptHoverEvents(True)
+        
+    
+        
 
+          
         self.signalObj = SignalInterface()
         self.robotNum = robotNum
 
@@ -51,7 +58,28 @@ class Robot(QGraphicsPixmapItem):
         # detect deadlock
         # self.wait : int
         # and count wait ??
+        
 
+    def boundingRect(self):
+        global rsize
+        return QRectF(0, 0, rsize, rsize)
+    
+    def paint(self, painter, option, widget):
+        self.pen = QPen()
+        self.pen.setStyle(Qt.PenStyle.NoPen)
+        self.painter = painter
+        self.painter.setPen(self.pen)
+        QGraphicsPixmapItem.paint(self, painter, option, widget)
+        self.painter.drawEllipse(self.boundingRect())
+        
+    def mousePressEvent(self, event):
+        global selected_robot
+        selected_robot = self
+        x, y = self.pos().x(), self.pos().y()
+        self.popup = RobotinfoWindow(int(x), int(y))
+        self.popup.exec() 
+        
+        
     def assignMission(self, route: list[NodePos], box: int = 0):
         self.sequence = 0
         self.route = route
@@ -59,6 +87,7 @@ class Robot(QGraphicsPixmapItem):
         self.box = box
         if box != 0:
             self.setPixmap(QPixmap(ROBOT_GAS).scaled(100, 100))
+
 
         self.doNextOperation()
 
@@ -230,6 +259,21 @@ class Robot(QGraphicsPixmapItem):
         print(self.robotNum, "deadlock", self.deadlockedCounter)
         QTimer.singleShot(duration, self.doNextOperation)
 
+def resource_path(relative_path):
+    base_path = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
+        
+form_popup = resource_path('robotinfo.ui')
+form_popupwindow = loadUiType(form_popup)[0]
+
+class RobotinfoWindow(QDialog, QWidget, form_popupwindow):
+    def __init__(self, x, y):
+        super().__init__()
+        self.setupUi(self)
+        self.setWindowTitle('RobotInfo')
+        self.label_2.setText(str(x//100))
+        self.label_6.setText(str(y//100))
+        self.show()
 
 class SignalInterface(QObject):
     missionFinished = Signal(int, NodePos)
